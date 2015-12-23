@@ -199,17 +199,17 @@ start_k8s(){
         -d \
         -v /sys:/sys:ro \
         -v /var/run:/var/run:rw \
-        -v /:/rootfs:ro \
         -v /dev:/dev \
         -v /var/lib/docker/:/var/lib/docker:rw \
         -v /var/lib/kubelet/:/var/lib/kubelet:rw \
         gcr.io/google_containers/hyperkube:v${K8S_VERSION} \
-        /hyperkube kubelet \
-        --v=2 --address=0.0.0.0 --enable-server \
-        --config=/etc/kubernetes/manifests-multi \
-        --cluster-dns=10.0.0.10 \
-        --cluster-domain=cluster.local \
-        --containerized
+        /kubelet-runner.sh \
+            --address=0.0.0.0 \
+            --enable-server \
+            --config=etc/kubernetes/manifests \
+            --cluster-dns=10.0.0.10 \
+            --cluster-domain=cluster.local \
+            --v=2
 
     docker run \
         -d \

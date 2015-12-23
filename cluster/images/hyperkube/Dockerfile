@@ -18,6 +18,9 @@ RUN cp /usr/bin/nsenter /nsenter
 COPY hyperkube /hyperkube
 RUN chmod a+rx /hyperkube
 
+COPY kubelet-runner.sh /kubelet-runner.sh
+RUN chmod a+rx /kubelet-runner.sh
+
 COPY master-multi.json /etc/kubernetes/manifests-multi/master.json
 COPY master.json /etc/kubernetes/manifests/master.json
 COPY etcd.json /etc/kubernetes/manifests/etcd.json
