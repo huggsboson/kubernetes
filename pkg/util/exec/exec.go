@@ -19,6 +19,8 @@ package exec
 import (
 	osexec "os/exec"
 	"syscall"
+	"fmt"
+	"strings"
 )
 
 // ErrExecutableNotFound is returned if the executable is not found.
@@ -97,6 +99,11 @@ func (cmd *cmdWrapper) CombinedOutput() ([]byte, error) {
 		return out, err
 	}
 	return out, nil
+}
+
+func (cmd *cmdWrapper) String() string {
+	osexecCmd := (*osexec.Cmd)(cmd)
+	return fmt.Sprintf("%v %s", osexecCmd.Path, strings.Join(osexecCmd.Args, " "))
 }
 
 // exitErrorWrapper is an implementation of ExitError in terms of os/exec ExitError.

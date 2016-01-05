@@ -91,7 +91,7 @@ type Config struct {
 
 	// Maximum burst for throttle
 	Burst int
-}
+}}
 
 // TLSClientConfig contains settings to enable transport layer security
 type TLSClientConfig struct {

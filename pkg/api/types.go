@@ -551,7 +551,19 @@ type GitRepoVolumeSource struct {
 	// git repository.  Otherwise, if specified, the volume will contain the git repository in
 	// the subdirectory with the given name.
 	Directory string `json:"directory,omitempty"`
-	// TODO: Consider credentials here.
+	// The name of the secret containing the SSH private key to be used for authentication
+	// against the git repo.  If supplied the git clone command will be executed within an
+	// ssh-agent context with that private key setup for authentication.
+	// Will not work for Repository URLs like git:// or https://, only with:
+	// ssh://[user@]host.xyz/repo.git and [user@]host.xy/repo.git
+	// TODO: Fix doc
+	SSHSecretName string `json:"sshSecretName,omitempty"`
+	// The name of the file within the secret, defaults to "id-rsa"
+	// TODO: Fix doc
+	SSHSecretDataName string `json:"sshSecretDataName,omitempty"`
+	// Had to do this for testing, seriously questionable in prod
+	// "no"
+	SSHStrictHostKeyChecking string `json:"sshStrictHostKeyChecking,omitempty"`
 }
 
 // Adapts a Secret into a volume.

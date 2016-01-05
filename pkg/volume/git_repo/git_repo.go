@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path"
-	"strings"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/types"
@@ -28,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/volume"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
+	"strings"
 )
 
 // This is the primary entrypoint for volume plugins.
@@ -69,6 +69,9 @@ func (plugin *gitRepoPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, opts vo
 		source:   spec.Volume.GitRepo.Repository,
 		revision: spec.Volume.GitRepo.Revision,
 		target:   spec.Volume.GitRepo.Directory,
+		sshSecretName: spec.Volume.GitRepo.SSHSecretName,
+		sshSecretDataName: spec.Volume.GitRepo.SSHSecretDataName,
+		sshStrictHostKeyChecking: spec.Volume.GitRepo.SSHStrictHostKeyChecking,
 		exec:     exec.New(),
 		opts:     opts,
 	}, nil
@@ -104,12 +107,15 @@ func (gr *gitRepoVolume) GetPath() string {
 type gitRepoVolumeBuilder struct {
 	*gitRepoVolume
 
-	pod      api.Pod
-	source   string
-	revision string
-	target   string
-	exec     exec.Interface
-	opts     volume.VolumeOptions
+	pod           api.Pod
+	source        string
+	revision      string
+	target        string
+	sshSecretName string
+	sshSecretDataName   string
+	sshStrictHostKeyChecking string
+	exec          exec.Interface
+	opts          volume.VolumeOptions
 }
 
 var _ volume.Builder = &gitRepoVolumeBuilder{}
@@ -148,14 +154,76 @@ func (b *gitRepoVolumeBuilder) SetUpAt(dir string) error {
 		return err
 	}
 
-	args := []string{"clone", b.source}
+	var sshKeyPath string
+	var sshWrapperPath = path.Join(b.getMetaDir(), "ssh-wrapper.sh")
 
-	if len(b.target) != 0 {
-		args = append(args, b.target)
+	// write key file for ssh authentication
+	if len(b.sshSecretName) != 0 {
+		sshSecretDataName := "id-rsa"
+		if len(b.sshSecretDataName) == 0 {
+			sshSecretDataName = b.sshSecretDataName
+		}
+
+		kubeClient := b.plugin.host.GetKubeClient()
+		if kubeClient == nil {
+			return fmt.Errorf("Cannot setup gitRepo volume %v because kube client is not configured", b.volName)
+		}
+
+		secrets, err := kubeClient.Secrets(b.pod.Namespace).Get(b.sshSecretName)
+		if err != nil {
+			return fmt.Errorf("Couldn't get secret %v/%v", b.pod.Namespace, b.sshSecretName)
+		}
+
+		if secret, ok := secrets.Data[sshSecretDataName]; ok {
+			// GIT_SSH wrapper script
+			var strictHostKeyChecking = "yes"
+			if b.sshStrictHostKeyChecking == "no" {
+				strictHostKeyChecking = "no"
+			}
+			sshWrapper := []byte(fmt.Sprintf("ssh -o StrictHostKeyChecking=%v $*", strictHostKeyChecking))
+			err := ioutil.WriteFile(sshWrapperPath, sshWrapper, 0755)
+
+			if err != nil {
+				return err
+			}
+
+			// Key file
+			sshKeyPath = path.Join(b.getMetaDir(), strings.Replace(b.sshSecretDataName, "-", "_", -1))
+			// NOTE: ssh-add will ignore files that are readable by other users
+			err = ioutil.WriteFile(sshKeyPath, secret, 0400)
+
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("Can't find private key within secret [%v] as data [%v]", b.sshSecretName, sshSecretDataName)
+		}
 	}
-	if output, err := b.execCommand("git", args, dir); err != nil {
-		return fmt.Errorf("failed to exec 'git %s': %s: %v",
-			strings.Join(args, " "), output, err)
+
+	var gitCommand string
+	if len(b.target) == 0 {
+		gitCommand = fmt.Sprintf("git clone \"%v\"", b.source)
+	} else {
+		gitCommand = fmt.Sprintf("git clone \"%v\" \"%v\"", b.source, b.target)
+	}
+
+	var cmd exec.Cmd
+
+	if len(sshKeyPath) == 0 {
+		// sh -c 'git clone git@github.com:TheUser/TheProject.git'
+		cmd = b.exec.Command("sh", "-c", gitCommand)
+	} else {
+		// ssh-agent /bin/sh -c 'export GIT_SSH=wrapper.sh && ssh-add the_file && git clone git@github.com:TheUser/TheProject.git'
+		sshWrapperEnv := fmt.Sprintf("export GIT_SSH=\"%v\"", sshWrapperPath)
+		sshAddCommand := fmt.Sprintf("ssh-add \"%v\"", sshKeyPath)
+		fullCommand := fmt.Sprintf("%v && %v && %v", sshWrapperEnv, sshAddCommand, gitCommand)
+		cmd = b.exec.Command("ssh-agent", "/bin/sh", "-c", fullCommand)
+	}
+
+	cmd.SetDir(dir)
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to exec [%v]: %s: %v", cmd, output, err)
 	}
 
 	files, err := ioutil.ReadDir(dir)
