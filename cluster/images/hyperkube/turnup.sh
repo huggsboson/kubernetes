@@ -21,7 +21,6 @@ set -o nounset
 set -o pipefail
 
 docker run \
-  --volume=/:/rootfs:ro \
   --volume=/sys:/sys:ro \
   --volume=/dev:/dev \
   --volume=/var/lib/docker/:/var/lib/docker:rw \
@@ -30,13 +29,12 @@ docker run \
   --net=host \
   --pid=host \
   --privileged=true \
-  -d gcr.io/google_containers/hyperkube:v${K8S_VERSION} \
-  /hyperkube kubelet \
-    --containerized \
+  -d huggsboson/hyperkube:636d9b7 \
+  /kubelet-runner.sh \
     --hostname-override="127.0.0.1" \
     --address="0.0.0.0" \
     --api-servers=http://localhost:8080 \
-    --config=/etc/kubernetes/manifests \
+    --config=etc/kubernetes/manifests \
     --cluster-dns=10.0.0.10 \
     --cluster-domain=cluster.local \
     --allow-privileged=true --v=10

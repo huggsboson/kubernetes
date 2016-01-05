@@ -1,4 +1,4 @@
-FROM BASEIMAGE
+FROM debian:jessie
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
     && DEBIAN_FRONTEND=noninteractive apt-get -yy -q \
